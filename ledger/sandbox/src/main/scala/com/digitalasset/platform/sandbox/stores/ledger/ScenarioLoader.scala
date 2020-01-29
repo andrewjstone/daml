@@ -290,13 +290,13 @@ object ScenarioLoader {
     }
   }
 
-  private val `#` = Ref.ContractIdString.assertFromString("#")
+  private val `#` = Ref.LedgerString.assertFromString("#")
   // currently the scenario interpreter produces the contract ids with no hash prefix,
   // but the sandbox does. add them here too for consistency
   private def absCidWithHash(a: AbsoluteContractId): AbsoluteContractId =
-    AbsoluteContractId(Ref.ContractIdString.concat(`#`, a.coid))
+    AbsoluteContractId(Ref.ContractIdStringV0.assertFromString(`#` + a.coid))
 
   private def nodeIdWithHash(nid: L.ScenarioNodeId): com.digitalasset.ledger.EventId =
-    Ref.ContractIdString.concat(`#`, nid)
+    Ref.LedgerString.concat(`#`, nid)
 
 }
