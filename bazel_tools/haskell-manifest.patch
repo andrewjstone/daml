@@ -1,7 +1,16 @@
 diff --git a/tools/runfiles/src/Bazel/Runfiles.hs b/tools/runfiles/src/Bazel/Runfiles.hs
-index 61b718f6..82e41571 100644
+index 61b718f6..12f7885e 100644
 --- a/tools/runfiles/src/Bazel/Runfiles.hs
 +++ b/tools/runfiles/src/Bazel/Runfiles.hs
+@@ -22,7 +22,7 @@ import GHC.Stack
+ import System.Directory (doesDirectoryExist, doesFileExist, listDirectory)
+ import System.Environment (getExecutablePath, lookupEnv)
+ import qualified System.FilePath
+-import System.FilePath (FilePath, (</>), (<.>), addTrailingPathSeparator)
++import System.FilePath (FilePath, (</>), (<.>), addTrailingPathSeparator, takeFileName)
+ import System.Info (os)
+ 
+ -- | Reference to Bazel runfiles, runfiles root or manifest file.
 @@ -165,7 +165,7 @@ containsOneDataFile = loop
          isDir <- doesDirectoryExist fp
          if isDir
