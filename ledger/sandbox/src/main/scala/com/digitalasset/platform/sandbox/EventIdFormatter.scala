@@ -16,6 +16,9 @@ object EventIdFormatter {
 
   case class TransactionIdWithIndex(transactionId: TransactionIdString, nodeId: Transaction.NodeId)
 
+  def makeAbs(transactionId: TransactionIdString)(rcoid: Lf.RelativeContractId): LedgerString =
+    fromTransactionId(transactionId, rcoid.txnid)
+
   def makeAbsCoid(transactionId: TransactionIdString)(coid: Lf.ContractId): Lf.AbsoluteContractId =
     coid match {
       case a @ Lf.AbsoluteContractId(_) => a

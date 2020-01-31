@@ -17,7 +17,7 @@ import com.digitalasset.daml.lf.speedy.Speedy.{
   CtrlValue,
   CtrlWronglyTypeContractId,
   Machine,
-  SpeedyHungry,
+  SpeedyHungry
 }
 import com.digitalasset.daml.lf.speedy.SResult._
 import com.digitalasset.daml.lf.speedy.SValue._
@@ -1528,7 +1528,8 @@ object SBuiltin {
           case Left(err) => crash(err)
           case Right(keyVal) =>
             val keyWithoutContractIds =
-              keyVal.mapContractId(coid => crash(s"Unexpected contract id in key: $coid"))
+              V.VersionedValue.mapContents((coid: V.ContractId) =>
+                crash(s"Unexpected contract id in key: $coid"))
             KeyWithMaintainers(
               key = keyWithoutContractIds,
               maintainers = extractParties(vals.get(1)),

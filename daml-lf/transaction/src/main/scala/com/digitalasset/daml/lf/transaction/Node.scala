@@ -1,9 +1,11 @@
 // Copyright (c) 2020 The DAML Authors. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-package com.digitalasset.daml.lf.transaction
+package com.digitalasset.daml.lf
+package transaction
 import com.digitalasset.daml.lf.data.{ImmArray, ScalazEqual}
 import com.digitalasset.daml.lf.data.Ref._
+import com.digitalasset.daml.lf.value.{MakeCidAbs1, MakeRelAbs3}
 import com.digitalasset.daml.lf.value.Value.{ContractInst, VersionedValue}
 
 import scala.language.higherKinds
@@ -19,8 +21,14 @@ object Node {
 
   /** Transaction nodes parametrized over identifier type */
   sealed trait GenNode[+Nid, Cid, +Val] extends Product with Serializable {
-    def mapContractIdAndValue[Cid2, Val2](f: Cid => Cid2, g: Val => Val2): GenNode[Nid, Cid2, Val2]
-    def mapNodeId[Nid2](f: Nid => Nid2): GenNode[Nid2, Cid, Val]
+
+    @deprecated("use VersionValue.makeRelCidAbs", since = "0.13.51")
+    def mapContractIdAndValue[Cid2, Val2](
+        f: Cid => Cid2,
+        g: Val => Val2): GenNode[Nid, Cid2, Val2] =
+      GenNode.mapContents(this, identity[Nid], f, g)
+    def mapNodeId[Nid2](f: Nid => Nid2): GenNode[Nid2, Cid, Val] =
+      GenNode.mapContents(this, f, identity[Cid], identity[Val])
 
     /** Required authorizers (see ledger model); UNSAFE TO USE on fetch nodes of transaction with versions < 5
       *
@@ -35,7 +43,13 @@ object Node {
     def requiredAuthorizers: Set[Party]
   }
 
-  object GenNode extends WithTxValue3[GenNode]
+  object GenNode extends WithTxValue3[GenNode] with MakeRelAbs3[GenNode] {
+    override private[lf] def mapContents[A0, B0, C0, A1, B1, C1](
+        x: GenNode[A0, B0, C0],
+        f: A0 => A1,
+        g: B0 => B1,
+        h: C0 => C1): GenNode[A1, B1, C1] = ???
+  }
 
   /** A transaction node that can't possibly refer to `Nid`s. */
   sealed trait LeafOnlyNode[Cid, +Val] extends GenNode[Nothing, Cid, Val]
@@ -51,13 +65,14 @@ object Node {
       stakeholders: Set[Party],
       key: Option[KeyWithMaintainers[Val]],
   ) extends LeafOnlyNode[Cid, Val] {
-    override def mapContractIdAndValue[Cid2, Val2](
-        f: Cid => Cid2,
-        g: Val => Val2,
-    ): NodeCreate[Cid2, Val2] =
-      copy(coid = f(coid), coinst = coinst.mapValue(g), key = key.map(_.mapValue(g)))
 
-    override def mapNodeId[Nid2](f: Nothing => Nid2): NodeCreate[Cid, Val] = this
+//    override def mapContractIdAndValue[Cid2, Val2](
+//        f: Cid => Cid2,
+//        g: Val => Val2,
+//    ): NodeCreate[Cid2, Val2] =
+//      copy(coid = f(coid), coinst = coinst.mapValue(g), key = key.map(_.mapValue(g)))
+//
+//    override def mapNodeId[Nid2](f: Nothing => Nid2): NodeCreate[Cid, Val] = this
 
     override def requiredAuthorizers(): Set[Party] = signatories
 
@@ -74,13 +89,13 @@ object Node {
       signatories: Set[Party],
       stakeholders: Set[Party],
   ) extends LeafOnlyNode[Cid, Nothing] {
-    override def mapContractIdAndValue[Cid2, Val2](
-        f: Cid => Cid2,
-        g: Nothing => Val2,
-    ): NodeFetch[Cid2] =
-      copy(coid = f(coid))
-
-    override def mapNodeId[Nid2](f: Nothing => Nid2): NodeFetch[Cid] = this
+//    override def mapContractIdAndValue[Cid2, Val2](
+//        f: Cid => Cid2,
+//        g: Nothing => Val2,
+//    ): NodeFetch[Cid2] =
+//      copy(coid = f(coid))
+//
+//    override def mapNodeId[Nid2](f: Nothing => Nid2): NodeFetch[Cid] = this
 
     /** This blows up on transactions with version <5. The caller must ensure that the transaction is of
       * this form.
@@ -114,21 +129,21 @@ object Node {
       exerciseResult: Option[Val],
       key: Option[KeyWithMaintainers[Val]],
   ) extends GenNode[Nid, Cid, Val] {
-    override def mapContractIdAndValue[Cid2, Val2](
-        f: Cid => Cid2,
-        g: Val => Val2,
-    ): NodeExercises[Nid, Cid2, Val2] =
-      copy(
-        targetCoid = f(targetCoid),
-        chosenValue = g(chosenValue),
-        exerciseResult = exerciseResult.map(g),
-        key = key.map(_.mapValue(g)),
-      )
-
-    override def mapNodeId[Nid2](f: Nid => Nid2): NodeExercises[Nid2, Cid, Val] =
-      copy(
-        children = children.map(f),
-      )
+//    override def mapContractIdAndValue[Cid2, Val2](
+//        f: Cid => Cid2,
+//        g: Val => Val2,
+//    ): NodeExercises[Nid, Cid2, Val2] =
+//      copy(
+//        targetCoid = f(targetCoid),
+//        chosenValue = g(chosenValue),
+//        exerciseResult = exerciseResult.map(g),
+//        key = key.map(_.mapValue(g)),
+//      )
+//
+//    override def mapNodeId[Nid2](f: Nid => Nid2): NodeExercises[Nid2, Cid, Val] =
+//      copy(
+//        children = children.map(f),
+//      )
 
     override def requiredAuthorizers(): Set[Party] = actingParties
 
@@ -177,13 +192,13 @@ object Node {
       key: KeyWithMaintainers[Val],
       result: Option[Cid],
   ) extends LeafOnlyNode[Cid, Val] {
-    override def mapContractIdAndValue[Cid2, Val2](
-        f: Cid => Cid2,
-        g: Val => Val2,
-    ): NodeLookupByKey[Cid2, Val2] =
-      copy(result = result.map(f), key = key.mapValue(g))
-
-    override def mapNodeId[Nid2](f: Nothing => Nid2): NodeLookupByKey[Cid, Val] = this
+//    override def mapContractIdAndValue[Cid2, Val2](
+//        f: Cid => Cid2,
+//        g: Val => Val2,
+//    ): NodeLookupByKey[Cid2, Val2] =
+//      copy(result = result.map(f), key = key.mapValue(g))
+//
+//    override def mapNodeId[Nid2](f: Nothing => Nid2): NodeLookupByKey[Cid, Val] = this
 
     override def requiredAuthorizers(): Set[Party] = key.maintainers
 
@@ -192,16 +207,20 @@ object Node {
   object NodeLookupByKey extends WithTxValue2[NodeLookupByKey]
 
   case class KeyWithMaintainers[+Val](key: Val, maintainers: Set[Party]) {
+    @deprecated("use KeyWithMaintainers.makeRelCidAbs", since = "0.13.51")
     def mapValue[Val1](f: Val => Val1): KeyWithMaintainers[Val1] = copy(key = f(key))
   }
 
-  object KeyWithMaintainers {
+  object KeyWithMaintainers extends MakeCidAbs1[KeyWithMaintainers] {
     implicit def equalInstance[Val: Equal]: Equal[KeyWithMaintainers[Val]] =
       ScalazEqual.withNatural(Equal[Val].equalIsNatural) { (a, b) =>
         import a._
         val KeyWithMaintainers(bKey, bMaintainers) = b
         key === bKey && maintainers == bMaintainers
       }
+
+    override private[lf] def mapContents[A, B](x: KeyWithMaintainers[A], f: A => B) =
+      x.copy(key = f(x.key))
   }
 
   final def isReplayedBy[Cid: Equal, Val: Equal](

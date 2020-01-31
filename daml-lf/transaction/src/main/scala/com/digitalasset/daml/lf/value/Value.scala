@@ -9,10 +9,11 @@ import com.digitalasset.daml.lf.data.Ref.{
   Identifier,
   LedgerString,
   Name,
-  `Name equal instance`,
+  `Name equal instance`
 }
 import com.digitalasset.daml.lf.data._
 import com.digitalasset.daml.lf.language.LanguageVersion
+import com.digitalasset.daml.lf.value.Value.RelativeContractId
 
 import scala.annotation.tailrec
 import scalaz.Equal
@@ -25,27 +26,7 @@ sealed abstract class Value[+Cid] extends Product with Serializable {
   import Value._
   // TODO (FM) make this tail recursive
   def mapContractId[Cid2](f: Cid => Cid2): Value[Cid2] =
-    // TODO (FM) make this tail recursive
-    this match {
-      case ValueContractId(coid) => ValueContractId(f(coid))
-      case ValueRecord(id, fs) =>
-        ValueRecord(id, fs.map({
-          case (lbl, value) => (lbl, value.mapContractId(f))
-        }))
-      case ValueStruct(fs) =>
-        ValueStruct(fs.map[(Name, Value[Cid2])] {
-          case (lbl, value) => (lbl, value.mapContractId(f))
-        })
-      case ValueVariant(id, variant, value) =>
-        ValueVariant(id, variant, value.mapContractId(f))
-      case x: ValueCidlessLeaf => x
-      case ValueList(vs) =>
-        ValueList(vs.map(_.mapContractId(f)))
-      case ValueOptional(x) => ValueOptional(x.map(_.mapContractId(f)))
-      case ValueTextMap(x) => ValueTextMap(x.mapValue(_.mapContractId(f)))
-      case ValueGenMap(entries) =>
-        ValueGenMap(entries.map { case (k, v) => k.mapContractId(f) -> v.mapContractId(f) })
-    }
+    Value.mapContents(this, f)
 
   /** returns a list of validation errors: if the result is non-empty the value is
     * _not_ serializable.
@@ -149,9 +130,37 @@ sealed abstract class Value[+Cid] extends Product with Serializable {
 
     go(false, BackStack.empty, FrontStack((this, 0))).toImmArray
   }
+
 }
 
-object Value {
+object Value extends MakeCidAbs1[Value] {
+
+  // TODO (FM) make this tail recursive
+  override def mapContents[Cid, Cid2](x: Value[Cid], f: Cid => Cid2): Value[Cid2] = {
+    def go(v0: Value[Cid]): Value[Cid2] =
+      // TODO (FM) make this tail recursive
+      v0 match {
+        case ValueContractId(coid) => ValueContractId(f(coid))
+        case ValueRecord(id, fs) =>
+          ValueRecord(id, fs.map({
+            case (lbl, value) => (lbl, go(value))
+          }))
+        case ValueStruct(fs) =>
+          ValueStruct(fs.map[(Name, Value[Cid2])] {
+            case (lbl, value) => (lbl, go(value))
+          })
+        case ValueVariant(id, variant, value) =>
+          ValueVariant(id, variant, go(value))
+        case x: ValueCidlessLeaf => x
+        case ValueList(vs) =>
+          ValueList(vs.map(go))
+        case ValueOptional(x) => ValueOptional(x.map(go))
+        case ValueTextMap(x) => ValueTextMap(x.mapValue(go))
+        case ValueGenMap(entries) =>
+          ValueGenMap(entries.map { case (k, v) => go(k) -> go(v) })
+      }
+    go(x)
+  }
 
   /** the maximum nesting level for DAML-LF serializable values. we put this
     * limitation to be able to reliably implement stack safe programs with it.
@@ -164,8 +173,10 @@ object Value {
   val MAXIMUM_NESTING: Int = 100
 
   final case class VersionedValue[+Cid](version: ValueVersion, value: Value[Cid]) {
+
+    @deprecated("use VersionValue.makeRelCidAbs", since = "0.13.51")
     def mapContractId[Cid2](f: Cid => Cid2): VersionedValue[Cid2] =
-      this.copy(value = value.mapContractId(f))
+      VersionedValue.mapContents(this, f)
 
     /** Increase the `version` if appropriate for `languageVersions`. */
     def typedBy(languageVersions: LanguageVersion*): VersionedValue[Cid] = {
@@ -175,13 +186,17 @@ object Value {
     }
   }
 
-  object VersionedValue {
+  object VersionedValue extends MakeCidAbs1[VersionedValue] {
     implicit def `VersionedValue Equal instance`[Cid: Equal]: Equal[VersionedValue[Cid]] =
       ScalazEqual.withNatural(Equal[Cid].equalIsNatural) { (a, b) =>
         import a._
         val VersionedValue(bVersion, bValue) = b
         version == bVersion && value === bValue
       }
+
+    override private[lf] def mapContents[A, B](x: VersionedValue[A], f: A => B): VersionedValue[B] =
+      x.copy(value = Value.mapContents(x.value, f))
+
   }
 
   /** The parent of all [[Value]] cases that cannot possibly have a Cid.
@@ -315,6 +330,11 @@ object Value {
 
   object ContractId {
     implicit val equalInstance: Equal[ContractId] = Equal.equalA
+    implicit val makeRelCidAbsInstance: MakeCidAbs[ContractId, AbsoluteContractId] =
+      (f: RelativeContractId => ContractIdString) => {
+        case acoid: AbsoluteContractId => acoid
+        case rcoid: RelativeContractId => AbsoluteContractId(f(rcoid))
+      }
   }
 
   /** The constructor is private so that we make sure that only this object constructs
@@ -342,4 +362,72 @@ object Value {
   val ValueFalse: ValueBool = ValueBool.Fasle
   val ValueNil: ValueList[Nothing] = ValueList(FrontStack.empty)
   val ValueNone: ValueOptional[Nothing] = ValueOptional(None)
+}
+
+trait MakeCidAbs[WithRelCid, WithoutRelCid] {
+
+  def apply(
+      f: RelativeContractId => Ref.ContractIdString
+  ): WithRelCid => WithoutRelCid
+
+}
+
+object MakeCidAbs {
+  implicit def TrivialInstance[WithoutRelCid]: MakeCidAbs[WithoutRelCid, WithoutRelCid] =
+    (f: RelativeContractId => Ref.ContractIdString) => identity
+}
+
+import scala.language.higherKinds
+
+trait MakeCidAbs1[F[_]] {
+
+  implicit def MakeCidAbsInstance[WithRelCoid, WihoutRelCoid](
+      implicit makeCidAbsInA: MakeCidAbs[WithRelCoid, WihoutRelCoid],
+  ): MakeCidAbs[F[WithRelCoid], F[WihoutRelCoid]] =
+    (f: RelativeContractId => Ref.ContractIdString) => mapContents(_, makeCidAbsInA(f))
+
+  private[lf] def mapContents[A, B](x: F[A], f: A => B): F[B]
+
+}
+
+trait MakeCidAbs2[F[_, _]] {
+
+  implicit def MakeCidAbdInstance[AWithRelCoid, BWithRelCoid, AWihoutRelCoid, BWihoutRelCoid](
+      implicit
+      makeCidAbsInA: MakeCidAbs[AWithRelCoid, AWihoutRelCoid],
+      makeCidAbsInB: MakeCidAbs[BWithRelCoid, BWihoutRelCoid],
+  ): MakeCidAbs[F[AWithRelCoid, BWithRelCoid], F[AWihoutRelCoid, BWihoutRelCoid]] =
+    (f: RelativeContractId => Ref.ContractIdString) =>
+      mapContents(_, makeCidAbsInA.apply(f), makeCidAbsInB.apply(f))
+
+  private[lf] def mapContents[A, B, C, D](x: F[A, B], f: A => C, g: B => D): F[C, D]
+
+}
+
+trait MakeRelAbs3[F[_, _, _]] {
+
+  implicit def MakeCidAbdInstance[
+      AWithRelCoid,
+      BWithRelCoid,
+      CWithRelCoid,
+      AWihoutRelCoid,
+      BWihoutRelCoid,
+      CWihoutRelCoid](
+      implicit
+      makeCidAbsInA: MakeCidAbs[AWithRelCoid, AWihoutRelCoid],
+      makeCidAbsInB: MakeCidAbs[BWithRelCoid, BWihoutRelCoid],
+      makeCidAbsInC: MakeCidAbs[CWithRelCoid, CWihoutRelCoid],
+  ): MakeCidAbs[
+    F[AWithRelCoid, BWithRelCoid, CWithRelCoid],
+    F[AWihoutRelCoid, BWihoutRelCoid, CWihoutRelCoid]] =
+    (f: RelativeContractId => Ref.ContractIdString) =>
+      mapContents(_, makeCidAbsInA.apply(f), makeCidAbsInB.apply(f), makeCidAbsInC.apply(f))
+
+  private[lf] def mapContents[A0, B0, C0, A1, B1, C1](
+      x: F[A0, B0, C0],
+      f: A0 => A1,
+      g: B0 => B1,
+      h: C0 => C1
+  ): F[A1, B1, C1]
+
 }

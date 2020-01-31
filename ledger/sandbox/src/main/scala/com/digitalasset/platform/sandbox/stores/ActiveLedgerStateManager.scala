@@ -151,7 +151,9 @@ class ActiveLedgerStateManager[ALS](initialState: => ALS)(
                   transactionId = transactionId,
                   eventId = nodeId,
                   workflowId = workflowId,
-                  contract = nc.coinst.mapValue(
+                  contract = Value.VersionedValue.MakeCidAbsInstance.apply(EventIdFormatter.makeAbs)
+
+                    nc.coinst.mapValue(
                     _.mapContractId(EventIdFormatter.makeAbsCoid(transactionId))),
                   witnesses = disclosure(nodeId),
                   // we need to `getOrElse` here because the `Nid` might include absolute

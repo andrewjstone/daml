@@ -22,6 +22,7 @@ case class VersionedTransaction[Nid, Cid](
     transaction: GenTransaction.WithTxValue[Nid, Cid],
 ) {
 
+  @deprecated("use TransactionVersion.makeRelCidAbs", since = "0.12.51")
   def mapContractId[Cid2](f: Cid => Cid2): VersionedTransaction[Nid, Cid2] =
     copy(transaction = transaction.mapContractIdAndValue(f, _.mapContractId(f)))
 
@@ -87,6 +88,7 @@ case class GenTransaction[Nid, Cid, +Val](
 
   import GenTransaction._
 
+  @deprecated("use VersionValue.makeRelCidAbs", since = "0.13.51")
   def mapContractIdAndValue[Cid2, Val2](
       f: Cid => Cid2,
       g: Val => Val2,
@@ -96,6 +98,7 @@ case class GenTransaction[Nid, Cid, +Val](
         nodes.transform((_, value) => value.mapContractIdAndValue(f, g)),
     )
 
+  @deprecated("use VersionValue.makeRelCidAbs", since = "0.13.51")
   def mapContractId[Cid2](f: Cid => Cid2)(
       implicit ev: Val <:< VersionedValue[Cid],
   ): WithTxValue[Nid, Cid2] =
