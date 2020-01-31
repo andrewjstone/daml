@@ -1,0 +1,13 @@
+diff --git a/tools/runfiles/src/Bazel/Runfiles.hs b/tools/runfiles/src/Bazel/Runfiles.hs
+index 61b718f6..82e41571 100644
+--- a/tools/runfiles/src/Bazel/Runfiles.hs
++++ b/tools/runfiles/src/Bazel/Runfiles.hs
+@@ -165,7 +165,7 @@ containsOneDataFile = loop
+         isDir <- doesDirectoryExist fp
+         if isDir
+             then anyM loop =<< fmap (map (fp </>)) (listDirectory fp)
+-            else pure $! fp /= "MANIFEST"
++            else pure $! takeFileName fp /= "MANIFEST"
+ 
+ -- | Check if the given predicate holds on any of the given values.
+ --
