@@ -603,7 +603,7 @@ object Transaction {
         val nodeId = NodeId(nextNodeIdx, nodeDiscriminator)
         val contractDiscriminator =
           nodeDiscriminator.map(crypto.Hash.deriveContractDiscriminator(_, stakeholders))
-        val cid = RelativeContractId(nodeId, contractDiscriminator)
+        val cid: TContractId = RelativeContractId(nodeId, contractDiscriminator)
         val createNode = NodeCreate(
           cid,
           coinst,

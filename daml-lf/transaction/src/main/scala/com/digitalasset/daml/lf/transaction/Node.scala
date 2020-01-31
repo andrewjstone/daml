@@ -18,7 +18,7 @@ import scalaz.syntax.equal._
 object Node {
 
   /** Transaction nodes parametrized over identifier type */
-  sealed trait GenNode[+Nid, +Cid, +Val] extends Product with Serializable {
+  sealed trait GenNode[+Nid, Cid, +Val] extends Product with Serializable {
     def mapContractIdAndValue[Cid2, Val2](f: Cid => Cid2, g: Val => Val2): GenNode[Nid, Cid2, Val2]
     def mapNodeId[Nid2](f: Nid => Nid2): GenNode[Nid2, Cid, Val]
 
@@ -38,12 +38,12 @@ object Node {
   object GenNode extends WithTxValue3[GenNode]
 
   /** A transaction node that can't possibly refer to `Nid`s. */
-  sealed trait LeafOnlyNode[+Cid, +Val] extends GenNode[Nothing, Cid, Val]
+  sealed trait LeafOnlyNode[Cid, +Val] extends GenNode[Nothing, Cid, Val]
 
   object LeafOnlyNode extends WithTxValue2[LeafOnlyNode]
 
   /** Denotes the creation of a contract instance. */
-  final case class NodeCreate[+Cid, +Val](
+  final case class NodeCreate[Cid, +Val](
       coid: Cid,
       coinst: ContractInst[Val],
       optLocation: Option[Location], // Optional location of the create expression
@@ -66,7 +66,7 @@ object Node {
   object NodeCreate extends WithTxValue2[NodeCreate]
 
   /** Denotes that the contract identifier `coid` needs to be active for the transaction to be valid. */
-  final case class NodeFetch[+Cid](
+  final case class NodeFetch[Cid](
       coid: Cid,
       templateId: Identifier,
       optLocation: Option[Location], // Optional location of the fetch expression
@@ -94,7 +94,7 @@ object Node {
     * to allow segregating the graph afterwards into party-specific
     * ledgers.
     */
-  final case class NodeExercises[+Nid, +Cid, +Val](
+  final case class NodeExercises[+Nid, Cid, +Val](
       targetCoid: Cid,
       templateId: Identifier,
       choiceId: ChoiceName,
@@ -171,7 +171,7 @@ object Node {
       )
   }
 
-  final case class NodeLookupByKey[+Cid, +Val](
+  final case class NodeLookupByKey[Cid, +Val](
       templateId: Identifier,
       optLocation: Option[Location],
       key: KeyWithMaintainers[Val],
@@ -268,11 +268,11 @@ object Node {
     */
   case class GlobalKey(templateId: Identifier, key: VersionedValue[Nothing])
 
-  sealed trait WithTxValue2[F[+ _, + _]] {
-    type WithTxValue[+Cid] = F[Cid, Transaction.Value[Cid]]
+  sealed trait WithTxValue2[F[_, _]] {
+    type WithTxValue[Cid] = F[Cid, Transaction.Value[Cid]]
   }
 
-  sealed trait WithTxValue3[F[+ _, + _, + _]] {
-    type WithTxValue[+Nid, +Cid] = F[Nid, Cid, Transaction.Value[Cid]]
+  sealed trait WithTxValue3[F[+ _, _, _]] {
+    type WithTxValue[+Nid, Cid] = F[Nid, Cid, Transaction.Value[Cid]]
   }
 }
